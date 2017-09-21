@@ -1,0 +1,106 @@
+using System;
+using System.ServiceProcess;
+using System.Text;
+using System.IO;
+using Microsoft.Web.Administration;
+using System.Threading;
+
+namespace IISAppListen
+{
+    public partial class Service1 : ServiceBase
+    {
+        //const string AppPoolName = "Test";
+        //const string WebSiteName = "Test";
+        const int SleepTime = 1000 * 30;
+        static ServerManager sm;
+
+        public Service1()
+        {
+            InitializeComponent();
+        }
+
+        protected override void OnStart(string[] args)
+        {           
+            sm = new ServerManager();
+            new Thread(RecoveryWebSite).Start();
+        }
+
+        static void RecoveryWebSite()
+        {
+            while (true)
+            {
+                try
+                {
+                    StreamReader sr = new StreamReader("c:\\IISAppListen\\WebSiteName.txt", Encoding.Default);
+                    string line;
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        ToSart(line.Trim());
+                    }
+                    sr.Close();                 
+                }
+                catch (Exception ex)
+                {
+                    WriteLog(ex.Message.ToString());
+                }
+                GC.Collect();
+                Thread.Sleep(SleepTime);
+            }
+        }
+
+        private static void ToSart(string WebSiteName)
+        {
+            var pool = sm.ApplicationPools[WebSiteName];
+            if (pool != null && pool.State == ObjectState.Stopped)
+            {
+                WriteLog("检测到应用池" + WebSiteName + "停止服务");
+                WriteLog("正在启动应用池" + WebSiteName);
+                if (pool.Start() == ObjectState.Started)
+                {
+                    WriteLog("成功启动应用池" + WebSiteName);
+                }
+                else
+                {
+                    WriteLog("启动应用池" + WebSiteName + "失败. " + SleepTime / 60 + "秒后重试启动");
+                }
+            }
+
+            var site = sm.Sites[WebSiteName];
+            if (site != null && site.State == ObjectState.Stopped)
+            {
+                WriteLog("检测到网站" + WebSiteName + "停止服务");
+                WriteLog("正在启动网站" + WebSiteName);
+                if (site.Start() == ObjectState.Started)
+                {
+                    WriteLog("成功启动网站" + WebSiteName);
+                }
+                else
+                {
+                    WriteLog("启动网站" + WebSiteName + "失败. " + SleepTime / 60 + "秒后重试启动");
+                }
+            }
+        }
+
+        static void WriteLog(string msg)
+        {
+            var fPath = "c:\\IISAppListen\\RecoveryWebsiteLog.txt";
+            if (!File.Exists(fPath))
+            {
+                File.Create(fPath).Close();
+            }
+
+            using (StreamWriter sw = new StreamWriter(fPath, true, Encoding.UTF8))
+            {
+                sw.WriteLine(string.Format("{0} , 时间{1}", msg, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")));
+            }
+            //GC.Collect();
+        }
+
+        protected override void OnStop()
+        {
+         
+        }
+
+      
+    }
+}
